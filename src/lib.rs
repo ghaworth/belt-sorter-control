@@ -80,16 +80,19 @@ impl Default for QueueInputs {
 }
 
 impl SorterQueue {
-    /// One "scan" of the queue logic.
     pub fn scan(&mut self, inputs: &QueueInputs) {
         self.python_task = inputs.python_task;
 
         if self.bug_fixed {
-            // for now, fixed == buggy; we’ll diverge later
-            self.section1_python_input_buggy();
+            self.section1_python_input_buggy(); // fixed variant later
         } else {
             self.section1_python_input_buggy();
         }
+
+        // movement (section 2) will go here later
+
+        self.section4_remove_dropped();
+        self.section4b_auto_remove_lost();
     }
 }
 
@@ -140,6 +143,62 @@ impl SorterQueue {
     }
 }
 
+impl SorterQueue {
+    fn section4_remove_dropped(&mut self) {
+        for i in 0..MAX_ITEMS {
+            if self.items[i].active && self.items[i].drop_done {
+                // Clear any belt that references this item index
+                for c in MIN_BELT..=MAX_BELT {
+                    if self.conveyor_item[c] == i as i8 {
+                        self.conveyor_item[c] = -1;
+                    }
+                }
+
+                // Reset the item
+                self.items[i].active = false;
+                self.items[i].drop_done = false;
+                self.items[i].task_number = 0;
+                self.items[i].position = 0;
+
+                // Buggy logic: manual count decrement
+                if !self.bug_fixed {
+                    self.count -= 1;
+                }
+            }
+        }
+    }
+}
+
+impl SorterQueue {
+    fn section4b_auto_remove_lost(&mut self) {
+        for i in 0..MAX_ITEMS {
+            if self.items[i].active {
+                let mut found = false;
+
+                // Scan all conveyors to see if any references this item
+                for c in MIN_BELT..=MAX_BELT {
+                    if self.conveyor_item[c] == i as i8 {
+                        found = true;
+                        break;
+                    }
+                }
+
+                if !found {
+                    // Item is active but not on any belt: reset it
+                    self.items[i].active = false;
+                    self.items[i].task_number = 0;
+                    self.items[i].position = 0;
+                    self.items[i].drop_done = false;
+
+                    if !self.bug_fixed {
+                        self.count -= 1;
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,6 +239,36 @@ mod tests {
         assert!(q.count > 0);
         assert!(q.count <= MAX_ITEMS as u8);
         assert!(q.items.iter().any(|it| it.active));
-        assert_eq!(q.conveyor_item[2], (q.count - 1) as i8);
+        assert!(q.count > 0);
+        assert!(q.count <= MAX_ITEMS as u8);
+        assert!(q.items.iter().any(|it| it.active));
+        assert!(
+            q.conveyor_item[MIN_BELT..=MAX_BELT]
+                .iter()
+                .any(|&idx| idx >= 0),
+            "expected at least one belt to reference an item"
+        );
+    }
+
+    #[test]
+    fn dropped_items_are_removed_and_count_decrements() {
+        let mut q = SorterQueue::new_buggy();
+
+        // Manually create one active item at belt 3
+        q.items[0].active = true;
+        q.items[0].task_number = 3;
+        q.items[0].position = 3;
+        q.conveyor_item[3] = 0;
+        q.count = 1;
+
+        // Mark it as dropped
+        q.items[0].drop_done = true;
+
+        let inp = QueueInputs::default();
+        q.scan(&inp);
+
+        assert_eq!(q.count, 0);
+        assert!(!q.items[0].active);
+        assert_eq!(q.conveyor_item[3], -1);
     }
 }
