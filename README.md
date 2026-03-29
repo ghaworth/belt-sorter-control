@@ -1,35 +1,51 @@
 # belt-sorter-control
 
-A Rust model of queue logic for a multi-belt sorting system, built to reproduce a long-run control bug and verify a fix with deterministic tests. The project uses `cargo test` to compare a buggy implementation against a corrected one under the same simulated load .
+A Rust model of queue logic for a multi-belt conveyor sorter. It reproduces a long-run control bug and verifies a fix using `cargo test` and a small CLI “scan stepper”.
 
-## Overview
+## What this project shows
 
-This repository focuses on the part of a sorter that tracks items, assigns destinations, advances items between belts, and removes them once dropped. The goal is not to emulate a full PLC runtime, but to create a behaviorally equivalent state-machine model that makes the bug easy to reproduce, explain, and test .
+- A queue implementation that tracks:
+  - up to 10 items,
+  - their destination belt,
+  - their current belt,
+  - and which belt holds which item index.
+- A **buggy** version where the queue length (`count`) is maintained manually across multiple code paths.
+- A **fixed** version where `count` is derived from the actual active items each scan, with an extra guard on inserting onto belt 2 while it’s still occupied.
 
-The model is intentionally small and deterministic. That makes it useful both as a debugging tool and as a foundation for later embedded targets, where the same core logic can be run on a microcontroller with minimal changes .
+Under a simple simulated load:
 
-## Problem
+- The buggy logic can enter a state where `count == 10` but only 2 items are actually active, and it stays stuck there.
+- The fixed logic, driven by the same pattern, keeps `count` equal to the number of active items and avoids that lock-up.
 
-The original control issue appeared only after extended operation: sorting gradually stopped even though the conveyors continued running. In the buggy queue implementation, a new item could overwrite the slot representing the first tracked belt before the previous item had advanced, creating orphaned active items and allowing the queue count to drift away from reality .
+This mirrors a real-world symptom: after extended operation, the sorter stopped sorting even though the conveyors still ran.
 
-Once the tracked count saturated, further insertions were blocked even though the system no longer held that many real items. At that point, downstream logic no longer received valid destination assignments, so no belt ever entered its drop/reverse path .
+## How it works
 
-## Fix
+Core pieces:
 
-The corrected implementation applies two changes:
+- `SorterQueue` — state of the queue and belt mapping.
+- `QueueInputs` — per-scan inputs (`python_task`, `entry_rise`, `exit_fall`).
+- Buggy path:
+  - manual `count += 1` on insert,
+  - manual `count -= 1` on various removal paths.
+- Fixed path:
+  - no manual `count` updates,
+  - `count` recomputed from `Item.active` each scan,
+  - plus an insertion guard on belt 2 to avoid overwriting an existing item.
 
-1. Guard insertion so a new item is not placed onto belt 2 while belt 2 is still occupied.
-2. Recompute `count` from active item state each scan instead of maintaining it manually across multiple code paths.
+There is also a tiny movement rule (belt 2 → belt 3) to create contention, enough to drive the buggy implementation into the failure state.
 
-Together, these changes remove the overwrite mechanism and eliminate count drift. The test harness exists to show that the buggy version can fail under load while the fixed version remains stable under the same stimulus .
+## Tests
 
-## Project structure
+Key tests in `src/lib.rs`:
 
-- `src/lib.rs` — queue model, state types, and scan logic.
-- `tests/` — integration tests that drive the queue with simulated task pulses and belt events.
-- Optional future direction: re-use the same core logic in an Embedded Rust target after validating behavior on the PC side first .
+- Basic construction and insert/remove behaviour.
+- `buggy_can_lock_up_while_fixed_stays_consistent`:
+  - Drives both variants with the same synthetic “task pulse” pattern.
+  - Asserts that the buggy version can reach `count == 10` with fewer than 10 active items.
+  - Asserts that the fixed version always has `count == active_items`.
 
-## Running tests
+Run all tests with:
 
 ```bash
 cargo test
