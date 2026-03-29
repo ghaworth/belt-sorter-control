@@ -346,4 +346,37 @@ mod tests {
         let active = q.items.iter().filter(|it| it.active).count() as u8;
         assert_eq!(q.count, active);
     }
+
+    #[test]
+    fn buggy_can_lock_up_while_fixed_stays_consistent() {
+        fn drive(queue: &mut SorterQueue, max_scans: usize) -> (u8, u8) {
+            let mut tick: u64 = 0;
+            for _ in 0..max_scans {
+                tick += 1;
+                let mut inputs = QueueInputs::default();
+
+                // Same pulse pattern as main.rs: 3, then 0,0
+                if tick % 3 == 1 {
+                    inputs.python_task = 3;
+                } else {
+                    inputs.python_task = 0;
+                }
+
+                queue.scan(&inputs);
+            }
+            let active = queue.items.iter().filter(|it| it.active).count() as u8;
+            (queue.count, active)
+        }
+
+        // Buggy: expect it can reach count 10 with fewer than 10 active items
+        let mut buggy = SorterQueue::new_buggy();
+        let (buggy_count, buggy_active) = drive(&mut buggy, 10_000);
+        assert_eq!(buggy_count, 10);
+        assert!(buggy_active < 10);
+
+        // Fixed: under same driving pattern, count must match active items
+        let mut fixed = SorterQueue::new_fixed();
+        let (fixed_count, fixed_active) = drive(&mut fixed, 10_000);
+        assert_eq!(fixed_count, fixed_active);
+    }
 }
