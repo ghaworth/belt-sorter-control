@@ -89,10 +89,23 @@ impl SorterQueue {
             self.section1_python_input_buggy();
         }
 
-        // movement (section 2) will go here later
+        // VERY simple movement for now: if there is an item on belt 2,
+        // move it to belt 3 on every scan.
+        self.simple_move_2_to_3();
 
         self.section4_remove_dropped();
         self.section4b_auto_remove_lost();
+    }
+}
+
+impl SorterQueue {
+    fn simple_move_2_to_3(&mut self) {
+        let i = self.conveyor_item[2];
+        if i >= 0 && self.conveyor_item[3] == -1 {
+            self.conveyor_item[2] = -1;
+            self.conveyor_item[3] = i;
+            self.items[i as usize].position = 3;
+        }
     }
 }
 

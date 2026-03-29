@@ -27,10 +27,10 @@ fn main() {
         // Build inputs for this scan
         let mut inputs = QueueInputs::default();
 
-        // Example: every 5th tick, pulse python_task = 3 then 0
-        if tick % 5 == 1 {
+        // Example: pulse every 3 ticks: 3, 0, 0, then repeat
+        if tick % 3 == 1 {
             inputs.python_task = 3;
-        } else if tick % 5 == 2 {
+        } else {
             inputs.python_task = 0;
         }
 
