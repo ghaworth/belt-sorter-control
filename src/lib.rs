@@ -84,13 +84,12 @@ impl SorterQueue {
         self.python_task = inputs.python_task;
 
         if self.bug_fixed {
-            self.section1_python_input_buggy(); // logic same, but no manual count changes
+            self.section1_python_input_fixed();
         } else {
             self.section1_python_input_buggy();
         }
 
-        // movement
-        self.simple_move_2_to_3(); // or whatever you named it
+        self.simple_move_2_to_3();
 
         self.section4_remove_dropped();
         self.section4b_auto_remove_lost();
@@ -158,6 +157,35 @@ impl SorterQueue {
             //     END_IF;
         }
         // END_IF;
+    }
+}
+
+impl SorterQueue {
+    fn section1_python_input_fixed(&mut self) {
+        if (2..=11).contains(&self.python_task) {
+            self.staged_task = self.python_task;
+        }
+
+        let trigger_now = self.python_task == 0 && !self.last_trigger;
+        self.last_trigger = self.python_task == 0;
+
+        if trigger_now && (2..=11).contains(&self.staged_task) {
+            // Guard: buffer not full AND belt 2 is free
+            if self.count < 10 && self.conveyor_item[2] == -1 {
+                let idx = self.write_index as usize;
+
+                self.items[idx].active = true;
+                self.items[idx].task_number = self.staged_task;
+                self.items[idx].position = 2;
+                self.items[idx].drop_done = false;
+
+                self.conveyor_item[2] = self.write_index as i8;
+
+                self.staged_task = 0;
+                self.write_index = (self.write_index + 1) % MAX_ITEMS as u8;
+                // no manual count increment here; fixed path uses recompute_count()
+            }
+        }
     }
 }
 
@@ -294,5 +322,28 @@ mod tests {
         assert_eq!(q.count, 0);
         assert!(!q.items[0].active);
         assert_eq!(q.conveyor_item[3], -1);
+    }
+
+    #[test]
+    fn fixed_queue_count_matches_active_items() {
+        let mut q = SorterQueue::new_fixed();
+
+        for _ in 0..5 {
+            let mut inp = QueueInputs::default();
+            inp.python_task = 3;
+            q.scan(&inp);
+            inp.python_task = 0;
+            q.scan(&inp);
+        }
+
+        // disturb state a bit
+        q.items[0].active = false;
+        q.conveyor_item[2] = -1;
+
+        let inp = QueueInputs::default();
+        q.scan(&inp);
+
+        let active = q.items.iter().filter(|it| it.active).count() as u8;
+        assert_eq!(q.count, active);
     }
 }
