@@ -84,17 +84,20 @@ impl SorterQueue {
         self.python_task = inputs.python_task;
 
         if self.bug_fixed {
-            self.section1_python_input_buggy(); // fixed variant later
+            self.section1_python_input_buggy(); // logic same, but no manual count changes
         } else {
             self.section1_python_input_buggy();
         }
 
-        // VERY simple movement for now: if there is an item on belt 2,
-        // move it to belt 3 on every scan.
-        self.simple_move_2_to_3();
+        // movement
+        self.simple_move_2_to_3(); // or whatever you named it
 
         self.section4_remove_dropped();
         self.section4b_auto_remove_lost();
+
+        if self.bug_fixed {
+            self.recompute_count();
+        }
     }
 }
 
@@ -148,7 +151,9 @@ impl SorterQueue {
                 self.write_index = (self.write_index + 1) % MAX_ITEMS as u8;
 
                 //         #Count := #Count + 1;
-                self.count += 1;
+                if !self.bug_fixed {
+                    self.count += 1;
+                }
             }
             //     END_IF;
         }
@@ -209,6 +214,12 @@ impl SorterQueue {
                 }
             }
         }
+    }
+}
+
+impl SorterQueue {
+    fn recompute_count(&mut self) {
+        self.count = self.items.iter().filter(|it| it.active).count() as u8;
     }
 }
 
